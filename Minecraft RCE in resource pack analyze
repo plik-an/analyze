@@ -1,0 +1,88 @@
+EN:
+New RCE and ip-grabbing resource pack exploit
+Recently, there has been an exploit used in a popular server network called Minehut that allows server owners to take ips of their players. This is normal on most servers, but Minehut masks ip addresses of all their players, protecting them. However, if you accept a resource pack on certain servers, your ip is grabbed and it bypasses the ip-spoof protection Minehut provides. If the resource pack is hosted on a custom domain, you could intercept requests and take the ip.
+
+This has led to multiple doxxing cases in Minehut's lobby chat, where up to 200 players can see it at once. The ip grab exploit also leads to a potential new exploit where a malicious file inside a downloaded server resouce pack could lead to an RCE exploit, giving them root access to your computer.
+
+Here is a quote of how it works by Houlton, I am trying to spread awareness of this potential exploit. The RCE is not confirmed to work, but the ip grab and bypass of ip spoof is working.
+
+Recently, a minecraft vulnerability was found and developed. It is very easy to exploit, and allows for full remote code execution via minimal user interaction, which brings it to a CVE score of 8.
+
+Surface level, the exploit is a simple resource pack link, which is displayed as a prompt on the minecraft client, asking to apply said resource pack. When the prompt is accepted, the client downloads a texture pack in the background, which is controlled by a 3rd party server specifying the resource pack link. Once the texture pack is downloaded, it is extracted and the contents are loaded into the game, for display purposes on the client.
+
+At first, the group actively exploiting this vulnerability was thought to use it as a way to log the IP addresses of incoming download requests done by the clients downloading the resource pack, but this was recently uncovered as being a distraction measure. The real exploit is within the texture pack that is downloaded. The texture pack looks like any other texture pack, except it being certainly not normal.
+
+The texture pack contains many ordinary textures, other than 2 images in the zip. The images assets/minecraft/textures/entity/creeper/creeper.png (1) and assets/minecraft/textures/entity/pig/pig.png (2) pretend to be ordinary images, but upon closer inspection, are a linux and windows executable, respectively. Executable 1 scans the host for any windows VM images and infects them with binary 2, and binary 2 does the following:
+ 1. Create a folder called "C:/Windows /System32" (including the space). Since windows 10-11 has an issue with trailing spaces at the end of folder names, this allows the attacker to have full write access to the real C:/Windows/System32 folder, without actually owning it
+ 2. Create a .dll file called "printui.dll", which gets executed by the autoelevate application "printui", which is copied from the real System32 folder into this fake one.
+ 3. Run printui, which then loads the fake printui.dll with full admin privileges without the UAC prompt asking the user for permission
+
+Said printui.dll does the following
+ 1. Create a hidden folder called "C:/WinSysUpgr"
+ 2. Place a copy of executable 2 in said folder
+ 3. Install a kernel driver (3)
+
+The kernel driver (3) does the following
+ 1. Run executable 2 in the folder mentioned before on each startup
+ 2. Stays always active, even when the system is shut down
+ 3. Connect to a c&c server (URL redacted for containment purposes) (4), and accept commands for it
+ 
+The C&C server (4) has following permissions over the host system, via kernel driver (3)
+ - Full read and write access to any files
+ - Full permissions over the file system, for that fact
+ - The ability to write shellcode to BIOS, for advanced persistance (requires a new motherboard to remove)
+ - The ability to hotswap any part of the host machine's software at any given moment
+ - Full read and write abilities to ram, for exfiltration of account details or credentials
+
+
+
+RU:
+Новый эксплойт для RCE и получения IP через ресурспак
+
+Недавно на популярном серверном сервисе Minehut был обнаружен эксплойт, позволяющий владельцам серверов получать IP-адреса своих игроков. Обычно это нормально, но Minehut маскирует IP всех своих игроков, обеспечивая защиту. Однако если на некоторых серверах принять ресурспак, ваш IP становится известен — это обходит защиту Minehut. Если ресурспак размещён на собственном домене, злоумышленник может перехватывать запросы и получить IP.
+
+Это уже привело к нескольким случаям доксинга в лобби-чате Minehut, где до 200 игроков могут видеть это одновременно. Эксплойт с получением IP также открывает путь к новой потенциальной уязвимости: вредоносный файл внутри загруженного ресурспака может привести к RCE-эксплойту, дающему злоумышленнику root-доступ к вашему компьютеру.
+
+Ниже цитата от Houlton с объяснением принципа работы. Я пытаюсь привлечь внимание к этой потенциальной уязвимости. RCE пока не подтверждён, но получение IP и обход маскировки работают.
+
+Недавно была найдена и разработана уязвимость в Minecraft. Её очень легко эксплуатировать, она позволяет получить полное удалённое выполнение кода при минимальном взаимодействии с пользователем, что даёт ей 8 баллов по шкале CVE.
+
+На поверхностном уровне эксплойт — это простая ссылка на ресурспак, которая отображается в клиенте Minecraft как запрос на применение этого ресурспака. При принятии запроса клиент в фоновом режиме загружает текстурный пакет, контролируемый сторонним сервером. После загрузки пакет распаковывается, и содержимое загружается в игру для отображения на клиенте.
+
+Изначально считалось, что группа, активно использующая эту уязвимость, просто собирает IP-адреса входящих запросов на скачивание ресурспака. Но позже выяснилось, что это отвлекающий манёвр. Настоящий эксплойт скрыт внутри загружаемого ресурспака. Пакет выглядит как обычный, за исключением двух изображений внутри архива.
+
+Файлы: assets/minecraft/textures/entity/creeper/creeper.png (1) и assets/minecraft/textures/entity/pig/pig.png (2) выдают себя за обычные картинки, но при ближайшем рассмотрении оказываются исполняемыми файлами — для Linux и Windows соответственно. Исполняемый файл 1 сканирует хост на наличие образов Windows VM и заражает их бинарным файлом 2. Бинарный файл 2 делает следующее:
+
+Создаёт папку C:/Windows /System32 (с пробелом). Из-за проблемы Windows 10–11 с пробелами в конце имён папок это даёт атакующему полный доступ на запись к настоящей папке C:/Windows/System32, не имея на неё прав.
+
+Создаёт DLL-файл printui.dll, который выполняется автоматически повышающим права приложением printui (копируется из настоящей System32 в поддельную папку).
+
+Запускает printui, который загружает поддельный printui.dll с полными правами администратора без запроса UAC.
+
+Этот printui.dll выполняет следующее:
+
+Создаёт скрытую папку C:/WinSysUpgr.
+
+Помещает туда копию исполняемого файла 2.
+
+Устанавливает драйвер ядра (3).
+
+Драйвер ядра (3) делает следующее:
+
+Запускает исполняемый файл 2 из указанной папки при каждой загрузке системы.
+
+Остаётся активным всегда, даже после выключения системы.
+
+Подключается к C&C-серверу (URL скрыт для предотвращения угрозы) (4) и принимает от него команды.
+
+C&C-сервер (4) через драйвер ядра (3) получает следующие возможности над системой жертвы:
+
+Полный доступ на чтение и запись к любым файлам.
+
+Фактически полный контроль над файловой системой.
+
+Возможность записывать шелл-код в BIOS для максимальной степени сохранения присутствия (требуется замена материнской платы для удаления).
+
+Возможность горячей замены любого программного компонента системы в любой момент.
+
+Полный доступ на чтение и запись к оперативной памяти для извлечения учётных данных.
