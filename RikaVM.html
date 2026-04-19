@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>RikaVM: Разбор .NET протектора | Анатомия виртуализации</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #f5f7fc;
+            font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.55;
+            color: #1a2634;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+        }
+
+        .hero {
+            background: linear-gradient(135deg, #0b1120 0%, #19233c 100%);
+            padding: 2.5rem 2rem;
+            color: white;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .hero h1 {
+            font-size: 2.2rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            margin-bottom: 0.75rem;
+            background: linear-gradient(120deg, #fff, #b9d0ff);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            gap: 0.5rem;
+            align-items: center;
+            background: rgba(255,255,255,0.08);
+            backdrop-filter: blur(4px);
+            padding: 0.35rem 1rem;
+            border-radius: 60px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 1rem;
+            width: fit-content;
+        }
+
+        .hero-badge span {
+            color: #8bb5ff;
+        }
+
+        .content {
+            padding: 2rem 2rem 2.5rem 2rem;
+        }
+
+        h2 {
+            font-size: 1.7rem;
+            font-weight: 600;
+            margin-top: 2rem;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.3px;
+            border-left: 5px solid #2d6ef7;
+            padding-left: 1rem;
+            color: #0b1e32;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 1.6rem 0 0.8rem 0;
+            color: #1f3a5f;
+        }
+
+        p {
+            margin-bottom: 1.1rem;
+            color: #2c3e4e;
+        }
+
+        .highlight {
+            background: #eef3ff;
+            border-left: 4px solid #2d6ef7;
+            padding: 1rem 1.5rem;
+            border-radius: 16px;
+            margin: 1.5rem 0;
+            font-weight: 500;
+        }
+
+        .info-note {
+            background: #f0f4fa;
+            border-radius: 20px;
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+            border: 1px solid #dce5f0;
+        }
+
+        code {
+            font-family: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
+            background: #f0f2f5;
+            padding: 0.2rem 0.4rem;
+            border-radius: 8px;
+            font-size: 0.85em;
+            color: #c7254e;
+        }
+
+        pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 1.2rem;
+            border-radius: 20px;
+            overflow-x: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            line-height: 1.45;
+            margin: 1.2rem 0;
+            border: 1px solid #1e2a44;
+            box-shadow: inset 0 1px 4px rgba(0,0,0,0.2);
+        }
+
+        pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+            font-size: inherit;
+        }
+
+        .macro-block {
+            background: #fef9e6;
+            border-left: 4px solid #f4b942;
+            padding: 1rem 1.5rem;
+            border-radius: 16px;
+            margin: 1.5rem 0;
+        }
+
+        hr {
+            margin: 2rem 0;
+            border: none;
+            height: 1px;
+            background: linear-gradient(to right, #dce5f0, transparent);
+        }
+
+        .footnote {
+            background: #f8f9fc;
+            border-radius: 24px;
+            padding: 1.2rem 1.6rem;
+            margin-top: 2rem;
+            border: 1px solid #e9edf2;
+            font-size: 0.9rem;
+        }
+
+        .tag {
+            background: #eef2ff;
+            color: #1e40af;
+            padding: 0.2rem 0.8rem;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+
+        ul, ol {
+            margin: 0.5rem 0 1rem 2rem;
+        }
+
+        li {
+            margin: 0.4rem 0;
+        }
+
+        @media (max-width: 680px) {
+            .container {
+                border-radius: 24px;
+            }
+            .hero {
+                padding: 1.5rem;
+            }
+            .hero h1 {
+                font-size: 1.7rem;
+            }
+            .content {
+                padding: 1.5rem;
+            }
+            h2 {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="hero">
+        <div class="hero-badge">
+            🔬 <span>@junk_code</span> • разбор протектора • .NET Internals
+        </div>
+        <h1>Анпакаем RikaVM: анатомия современной .NET виртуализации</h1>
+        <p style="margin-top: 0.8rem; opacity: 0.85;">Стековая ВМ, мега-макросы, криптография на GUID и как это всё девиртуализировать.</p>
+    </div>
+
+    <div class="content">
+        <p><span class="tag">💡 суть</span> <strong>Виртуализация</strong> — один из самых эффективных способов защиты приложений. Вместо родного MSIL кода, протектор превращает вашу логику в кастомный байткод, а в программу встраивает <strong>виртуальную машину</strong>, которая исполняет этот байткод. Реверсер видит лишь хаотичную математику и спецсимволы.</p>
+        
+        <div class="highlight">
+            🧩 <strong>RikaVM</strong> — недавно созданный .NET протектор. В этом разборе используется дамп виртуальной машины (полностью расшифрованный), поэтому некоторые методы имеют читаемые имена. В реальности — только огромные константы и обфускация.
+        </div>
+
+        <h2>🔍 Как RikaVM ищет свой код</h2>
+        <p>Любая ВМ должна где‑то хранить зашифрованный байткод методов. Вместо стандартных ресурсов, RikaVM использует более хитрый подход:</p>
+        <ul>
+            <li><strong>Windows:</strong> через <code>unsafe</code> и указатели читает PE-заголовки напрямую, ищет секцию <code>".{B$;"</code> (метод <code>VmDecryptor.InitDecryptor</code>).</li>
+            <li><strong>Другие ОС:</strong> открывает собственный файл с диска через <code>FileStream</code> и извлекает байткод из секции.</li>
+        </ul>
+        <p>В любом случае финальный шаг — расшифровка байткода перед выполнением.</p>
+
+        <h2>🔐 Криптографическая защита: больше чем XOR</h2>
+        <p>Авторы RikaVM продумали защиту от статического анализа. Ключом служит случайный GUID, от которого вычисляются MD5 и SHA256:</p>
+        <pre><code>string guidKey = "af28b7aa-2b77-415f-92ab-5fd1cceb11bc";
+byte[] md5Key = VmHash.HashMD5(Encoding.UTF8.GetBytes(guidKey));
+byte[] sha256Key = VmHash.Hash256(Encoding.UTF8.GetBytes(guidKey));</code></pre>
+        <p>Далее применяется <strong>ARX-подобный шифр</strong> (Add-Rotate-Xor) с 64-битными блоками. Функция <code>VmDecryptor.RotL64</code> многократно сдвигает и ксорит данные. Байткод расшифровывается кусками по 8 байт и сохраняется в массив <code>operand_ByteArray_141</code>. Чтобы написать скрипт-расшифровщик, необходимо воссоздать всю цепочку математики 1-в-1 — это сильно затрудняет автоматический статический анализ.</p>
+
+        <h2>⚙️ Архитектура: стековый виртуальный процессор</h2>
+        <p>После расшифровки работу начинает <strong>VmContext</strong> — виртуальный CPU. Стек значений (<code>StackValue</code>) умеет хранить любые типы: <code>int, float, object, IntPtr</code> и сложные структуры. ВМ автоматически адаптируется под битность платформы:</p>
+        <pre><code>public int NormToInt32 => IntPtr.Size == 4 ? (int)this.value : (int)((long)this.value);</code></pre>
+        <p>Благодаря этому один и тот же байткод работает на x86/x64/ARM без изменений.</p>
+
+        <h2>💥 «МегаМакросы» — когда один опкод делает 30+ действий</h2>
+        <p>Классические ВМ (например, KoiVM) используют простые опкоды: положить число, сложить, перейти. RikaVM идёт дальше и объединяет множество операций в один виртуальный опкод. Взгляните на <code>Opcode_MegaMacro15</code> — он выполняет вызовы через рефлексию, грузит локальные переменные, создаёт массивы, арифметику и ещё 200 строк логики:</p>
+        <pre><code>VmLocalVarPusher.GetLocalVarContext(ctx).LoadLocal(this.operand_Int32Array_273[0]).PushValue();
+methodBase = ctx.Metadata.ResolveMethod((int)this.operand_UInt32Array_274[0]);
+VmReflectionHelper.ExecuteMethodCall(methodBase, ctx, true);</code></pre>
+        <div class="macro-block">
+            🧠 <strong>Почему это эффективно?</strong> Обычные дизассемблеры ожидают, что один опкод = одно действие. В RikaVM разбор макросов требует ручного восстановления цепочек IL-инструкций, что делает автоматический деобфускатор крайне сложным, а для малоизвестного протектора — часто нецелесообразным.
+        </div>
+
+        <h2>📞 Вызовы нативных методов через рефлексию + динамический код</h2>
+        <p>Поскольку ВМ написана на C#, ей нужно вызывать настоящие методы .NET (например, <code>Environment.Exit</code>). RikaVM использует рефлексию, но для неизвестных заранее виртуальных методов генерирует код на лету через <code>VmReflectionHelper.CreateVirtDelegate</code>. Это создаёт дополнительные уровни косвенности, запутывая трассировку.</p>
+
+        <h2>🛠️ Как девиртуализировать RikaVM (план действий)</h2>
+        <p>Несмотря на мощную защиту, подход к девиртуализации остаётся системным:</p>
+        <ol>
+            <li><strong>Извлечь чистый байткод</strong> — дамп в рантайме или анализ секций.</li>
+            <li><strong>Маппинг опкодов</strong> — найти класс-диспетчер (аналог <code>OpcodeResolver</code>), сопоставить идентификаторы с обработчиками.</li>
+            <li><strong>Разбор макросов</strong> — написать транслятор, который раскрывает один "мега-опкод" в последовательность стандартных IL-инструкций.</li>
+            <li><strong>Символьное выполнение</strong> — восстановить граф потока управления, обойдя постоянное ксорение виртуального <code>InstructionPointer</code>.</li>
+        </ol>
+        <div class="info-note">
+            📌 <strong>Итог:</strong> RikaVM — пример продуманной .NET виртуализации: нестандартные макросы, агрессивная криптография, поддержка разных ОС и версий .NET. Но, как и любая защита, она лишь усложняет время анализа. Вопрос всегда в ресурсах и готовности реверсера потратить время на воссоздание логики.
+        </div>
+
+        <hr>
+        <div class="footnote">
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between;">
+                <div>
+                    <strong>✍️ @junk_code</strong><br>
+                    <span style="font-size: 0.8rem; color: #5a6e85;">разбор на основе файла из telegram-канала</span>
+                </div>
+                <div style="font-size: 0.8rem; color: #5a6e85;">
+                    🔗 <strong>источник:</strong> t.me/junk_code (t.me/dotnetreverse)
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
